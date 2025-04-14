@@ -2,13 +2,14 @@ package api
 
 import (
 	"encoding/xml"
+	"time"
 )
 
-type TokenResponse struct {
+type SimpleResponse struct {
 	XMLName xml.Name `xml:"response"`
 	Text    string   `xml:",chardata"`
 	Token   string   `xml:"token"`
-} 
+}
 
 type SmsListRequest struct {
 	XMLName xml.Name `xml:"request"`
@@ -21,45 +22,23 @@ type SmsListRequest struct {
 }
 
 type SmsListResponse struct {
-	XMLName  xml.Name `xml:"response"`
-	Text     string   `xml:",chardata"`
-	Count    string   `xml:"Count"`
-	Messages struct {
-		Text    string `xml:",chardata"`
-		Message struct {
-			Text     string `xml:",chardata"`
-			Smstat   string `xml:"Smstat"`
-			Index    string `xml:"Index"`
-			Phone    string `xml:"Phone"`
-			Content  string `xml:"Content"`
-			Date     string `xml:"Date"`
-			Sca      string `xml:"Sca"`
-			SaveType string `xml:"SaveType"`
-			Priority string `xml:"Priority"`
-			SmsType  string `xml:"SmsType"`
-		} `xml:"Message"`
-	} `xml:"Messages"`
+	Sms []SmsResponse `xml:"Messages>Message"`
+}
+
+type SmsResponse struct {
+	Index   int `xml:"Index"`
+    Phone   string `xml:"Phone"`
+    Content string `xml:"Content"`
+    Date    string `xml:"Date"`
 }
 
 type SmsDeleteRequest struct {
 	XMLName xml.Name `xml:"request"`
-	Text    string   `xml:",chardata"`
 	Index   int   `xml:"Index"`
 } 
 
-type SimpleResponse struct {
-	XMLName xml.Name `xml:"response"`
-	Text    string   `xml:",chardata"`
-}
-
-type Phone struct {
-	Text  string `xml:",chardata"`
-	Phone string `xml:"Phone"`
-}
-
 type SmsSendRequest struct {
 	XMLName xml.Name `xml:"request"`
-	Text    string   `xml:",chardata"`
 	Index   int   `xml:"Index"`
 	Phones  []Phone `xml:"Phones"`
 	Sca      string `xml:"Sca"`
@@ -67,4 +46,36 @@ type SmsSendRequest struct {
 	Length   int `xml:"Length"`
 	Reserved int `xml:"Reserved"`
 	Date     string `xml:"Date"`
+}
+
+type Phone struct {
+	Phone string `xml:"Phone"`
+}
+
+type User struct {
+	ID    uint   `gorm:"primaryKey"`
+	Name  string `gorm:"not null"`
+	Phone string `gorm:"not null;uniqueIndex"`
+}
+
+type Conversation struct {
+	ID            uint      `gorm:"primaryKey"`
+	Participant1ID   uint      `gorm:"not null;"`
+    Participant2ID   uint      `gorm:"not null;uniqueIndex"`
+	Name          string    `gorm:"not null"`
+	LastUpdatedAt time.Time `gorm:"not null;default:CURRENT_TIMESTAMP"`
+	Participant1 User    `gorm:"foreignKey:Participant1ID"`
+	Participant2 User    `gorm:"foreignKey:Participant2ID"`
+}
+
+type Message struct {
+	ID         uint      `gorm:"primaryKey"`
+	ConversationID uint  `gorm:"not null"`
+	SenderID   uint      `gorm:"not null"`
+	RecipientID uint     `gorm:"not null"`
+	Content    string    `gorm:"not null"`
+	Timestamp  time.Time `gorm:"not null;default:CURRENT_TIMESTAMP"`
+	Conversation  Conversation `gorm:"foreignKey:ConversationID"`
+	Sender        User         `gorm:"foreignKey:SenderID"`
+	Recipient     User         `gorm:"foreignKey:RecipientID"`
 }
