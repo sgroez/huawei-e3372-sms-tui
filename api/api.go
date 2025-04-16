@@ -4,18 +4,14 @@ import (
 	"encoding/xml"
 	"time"
 
-	"gorm.io/gorm"
+	"github.com/sgroez/huawei-e3372-sms-tui/helper"
 )
 
-var TIMESTAMP_LAYOUT = "2006-01-02 15:04:05"
-
 type Api struct {
-	db *gorm.DB
 	session *session
-	User *User
 }
 
-func NewApi(baseUrl string, username string, phone string) (*Api, error) {
+func NewApi(baseUrl string) (*Api, error) {
 	api := new(Api)
 	session, err := newSession(baseUrl)
 	if err != nil {
@@ -23,24 +19,49 @@ func NewApi(baseUrl string, username string, phone string) (*Api, error) {
 	}
 	api.session = session
 
-	db, err := newDatabase("chats.db")
-	if err != nil {
-		return nil, err
-	}
-	api.db = db
-
-	user, err := firstOrCreateUser(api.db, username, phone)
-	if err != nil {
-		return nil, err
-	}
-	api.User = user
-
 	return api, nil
 }
 
+type SimpleResponse struct {
+	XMLName xml.Name `xml:"response"`
+	Text    string   `xml:",chardata"`
+}
 
-func deleteSms(api *Api, id int) error {
-	resp, err := post(api.session, "api/sms/delete-sms", SmsDeleteRequest{Index: id})
+type SmsCount struct {
+    XMLName      xml.Name `xml:"response"`
+    LocalUnread  int      `xml:"LocalUnread"`
+    LocalInbox   int      `xml:"LocalInbox"`
+    LocalOutbox  int      `xml:"LocalOutbox"`
+}
+
+func (api *Api) SmsCount() (*SmsCount, error) {
+	resp, err := api.session.get("api/sms/sms-count")
+	if err != nil {
+		return nil, err
+	}
+
+	var smsCount SmsCount
+	err = xml.NewDecoder(resp.Body).Decode(&smsCount)
+	if err != nil {
+		return nil, err
+	}
+	return &smsCount, nil
+}
+
+type SmsSetReadOptions struct {
+	XMLName xml.Name `xml:"request"`
+	Index   int   `xml:"Index"`
+}
+
+func NewSmsSetReadOptions(index int) SmsSetReadOptions {
+	return SmsSetReadOptions{
+		Index: index,
+	}
+}
+
+
+func (api *Api) SmsSetRead(options SmsSetReadOptions) error {
+	resp, err := api.session.post("api/sms/set-read", options)
 	if err != nil {
 		return err
 	}
@@ -54,95 +75,109 @@ func deleteSms(api *Api, id int) error {
 	return nil
 }
 
-func LoadData(api *Api) {
-//implement initial data loading from database
+type SmsListOptions struct {
+	XMLName xml.Name `xml:"request"`
+	PageIndex int `xml:"PageIndex"`
+	ReadCount int `xml:"ReadCount"`
+	BoxType int `xml:"BoxType"`
+	SortType int `xml:"SortType"`
+	Ascending int `xml:"Ascending"`
+	UnreadPreferred int `xml:"UnreadPreferred"`
 }
 
-func GetMessages(api *Api) ([]Message, error) {
-	resp, err := post(api.session, "api/sms/sms-list", SmsListRequest{
-															PageIndex: 1,
-															ReadCount: 20,
-															BoxType: 1,
-															SortType: 0,
-															Ascending: 0,
-															UnreadPreferred: 0,
-															})
+func NewSmsListOptions() SmsListOptions {
+	return SmsListOptions{
+		PageIndex: 1,
+		ReadCount: 20,
+		BoxType: 1,
+		SortType: 0,
+		Ascending: 0,
+		UnreadPreferred: 0,
+	}
+}
+
+type SmsList struct {
+	Sms []Sms `xml:"Messages>Message"`
+}
+
+type Sms struct {
+	Index   int `xml:"Index"`
+    Phone   string `xml:"Phone"`
+    Content string `xml:"Content"`
+    Date    string `xml:"Date"`
+}
+
+func (api *Api) ReceiveSms(options SmsListOptions) (*SmsList, error) {
+	resp, err := api.session.post("api/sms/sms-list", options)
 	if err != nil {
 		return nil, err
 	}
 
-	var smslist SmsListResponse
+	var smslist SmsList
 	err = xml.NewDecoder(resp.Body).Decode(&smslist)
 	if err != nil {
 		return nil, err
 	}
 
-	messages := []Message{}
 	for _, sms := range smslist.Sms {
-		conversation, err := prepareConversation(api, sms.Phone)
-		if err != nil {
-			return nil, err
-		}
-		timestamp, err := time.Parse(TIMESTAMP_LAYOUT, sms.Date)
-		if err != nil {
-			return nil, err
-		}
-		message, err := createMessage(api.db, conversation.ID, conversation.Participant2ID, conversation.Participant1ID, sms.Content, timestamp)
-		if err != nil {
-			return nil, err
-		}
-		deleteSms(api, sms.Index)
-		messages = append(messages, *message)
+		api.SmsSetRead(NewSmsSetReadOptions(sms.Index))
 	}
-
-	return messages, nil
+	return &smslist, nil
 }
 
-func SendMessage(api *Api, phone string, content string) (*Message, error) {
-	timestamp := time.Now()
-	formattedTime := timestamp.Format(TIMESTAMP_LAYOUT)
-	phones := []Phone{{Phone: phone}}
-	
-	resp, err := post(api.session, "api/sms/send-sms", SmsSendRequest{
-															Index: -1,
-															Phones: phones,
-															Sca: "",
-															Content: content,
-															Length: len(content),
-															Reserved: 1,
-															Date: formattedTime,
-	})
+func(api *Api) ReceiveUnreadSms() (*SmsList, error) {
+	smsCount, err := api.SmsCount()
 	if err != nil {
 		return nil, err
+	}
+	smsListOptions := NewSmsListOptions()
+	smsListOptions.ReadCount = smsCount.LocalUnread
+	smsListOptions.UnreadPreferred = 1
+	smsList, err := api.ReceiveSms(smsListOptions)
+	if err != nil {
+		return nil, err
+	}
+	return smsList, nil
+}
+
+type SmsSendOptions struct {
+	XMLName xml.Name `xml:"request"`
+	Index   int   `xml:"Index"`
+	Phones  []Phone `xml:"Phones"`
+	Sca      string `xml:"Sca"`
+	Content  string `xml:"Content"`
+	Length   int `xml:"Length"`
+	Reserved int `xml:"Reserved"`
+	Date     string `xml:"Date"`
+}
+
+type Phone struct {
+	Phone string `xml:"Phone"`
+}
+
+func NewSmsSendOptions(phone string, content string) SmsSendOptions {
+	return SmsSendOptions{
+		Index: -1,
+		Phones: []Phone{{Phone: phone}},
+		Sca: "",
+		Content: content,
+		Length: len(content),
+		Reserved: 1,
+		Date: helper.DateToString(time.Now()),
+	}
+}
+
+func (api *Api) SendSms(options SmsSendOptions) error {
+	resp, err := api.session.post("api/sms/send-sms", options)
+	if err != nil {
+		return err
 	}
 
 	var resp_decoded SimpleResponse
 	err = xml.NewDecoder(resp.Body).Decode(&resp_decoded)
 	if err != nil {
-		return  nil, err
+		return  err
 	}
 	//check response for error tag in xml
-
-	conversation, err := prepareConversation(api, phone)
-	if err != nil {
-		return nil, err
-	}
-	message, err := createMessage(api.db, conversation.ID, conversation.Participant1ID, conversation.Participant2ID, content, timestamp )
-	if err != nil {
-		return nil, err
-	}
-
-	return message, nil
-}
-
-func prepareConversation(api *Api, phone string) (*Conversation, error) {
-		externalUser, err := firstOrCreateUser(api.db, "", phone)
-		if err != nil {
-			return nil, err
-		}
-		conversation, err := firstOrCreateConversation(api.db, api.User.ID, externalUser.ID, "")
-		if err != nil {
-			return nil, err
-		}
-		return conversation, nil
+	return nil
 }

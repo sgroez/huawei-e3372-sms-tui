@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"encoding/xml"
-	"log"
 	"net/http"
 	"net/http/cookiejar"
 
@@ -31,54 +30,63 @@ func newSession(baseUrl string) (*session, error) {
 
 	session.baseUrl = baseUrl
 
-	tokens, err := initialize(session)
+	session.verificationTokens = []string{}
+
+	resp, err := session.client.Get(session.baseUrl)
 	if err != nil {
 		return nil, err
-	}
-	session.verificationTokens = tokens
-
-	return session, nil
-}
-
-func initialize(session *session) ([]string, error) {
-	tokens := []string{}
-	resp, err := get(session, "")
-	if err != nil {
-		return tokens, err
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		return tokens, err
+		return nil, err
 	}
 
 	doc.Find("meta[name='csrf_token']").Each(func(i int, s *goquery.Selection) {
 		token, _ := s.Attr("content")
-		tokens = append(tokens, token)
+		session.verificationTokens = append(session.verificationTokens, token)
 	})
-	return tokens, nil
+
+	return session, nil
 }
 
-func getToken(session *session) string {
+type Token struct {
+	XMLName xml.Name `xml:"request"`
+	Token string `xml:"token"`
+}
+
+func (session *session) requestToken() (string, error) {
+	url := session.baseUrl + "webserver/token"
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+
+	var token Token
+	err = xml.NewDecoder(resp.Body).Decode(&token)
+	if err != nil {
+		return "", err
+	}
+
+	return token.Token, nil
+
+}
+
+func (session *session) getToken() (string, error) {
 	if len(session.verificationTokens) <= 0 {
-		log.Println("WARN: No verification token left in list!")
-		return ""
+		return session.requestToken()
 	}
 	token := session.verificationTokens[0]
 	session.verificationTokens = session.verificationTokens[1:]
-	return token
+	return token, nil
 }
 
-func get(session *session, endpoint string) (*http.Response, error) {
+func (session *session) get(endpoint string) (*http.Response, error) {
 	url := session.baseUrl + endpoint
-	verificationToken := getToken(session)
 	req, err := http.NewRequest("GET", url, nil)
-
 	if err != nil {
 		return nil, err
 	}
-    
-	req.Header.Set("__RequestVerificationToken", verificationToken)
 
 	resp, err := session.client.Do(req)
 
@@ -86,16 +94,10 @@ func get(session *session, endpoint string) (*http.Response, error) {
 		return nil, err
 	}
 
-	//test if this is working
-	newToken := resp.Header.Get("__requestverificationtoken")
-	if newToken != "" {
-		session.verificationTokens = append(session.verificationTokens, newToken)
-	} 
-
 	return resp, nil
 }
 
-func post(session *session, endpoint string, data any) (*http.Response, error) {
+func (session *session) post(endpoint string, data any) (*http.Response, error) {
 	data_encoded, err := xml.Marshal(data)
 	
 	if err != nil {
@@ -103,7 +105,10 @@ func post(session *session, endpoint string, data any) (*http.Response, error) {
 	}
 
 	url := session.baseUrl + endpoint
-	verificationToken := getToken(session)
+	verificationToken, err := session.getToken()
+	if err != nil {
+		return nil, err
+	}
 	xmlHeader := []byte(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	fullXML := append(xmlHeader, data_encoded...)
 
