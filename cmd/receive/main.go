@@ -3,20 +3,18 @@ package main
 import (
 	"fmt"
 
-	"github.com/sgroez/huawei-e3372-sms-tui/api"
+	huaweie3372sms "github.com/sgroez/huawei-e3372-sms-tui/pkg/huawei-e3372-sms"
 )
 
 func main() {
-	API, err := api.NewApi("http://192.168.8.1/")
+	api, err := huaweie3372sms.NewApi("http://192.168.8.1/")
 	if err != nil {
 		panic(err)
 	}
 
-	smsListOptions := api.NewSmsListOptions()
-	smsListOptions.ReadCount = 1
-	smsListOptions.UnreadPreferred = 1
+	smsListOptions := huaweie3372sms.NewSmsListOptions()
 
-	smslist, err := API.ReceiveSms(smsListOptions)
+	smslist, err := api.SmsList(smsListOptions)
 	if err != nil {
 		panic(err)
 	}

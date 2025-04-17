@@ -5,19 +5,19 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sgroez/huawei-e3372-sms-tui/api"
+	huaweie3372sms "github.com/sgroez/huawei-e3372-sms-tui/pkg/huawei-e3372-sms"
 )
 
 func main() {
 	if len(os.Args) < 3 {
 		panic(errors.New("Please pass in the following arguments <receiver_phone> <message>!"))
 	}
-	API, err := api.NewApi("http://192.168.8.1/")
+	api, err := huaweie3372sms.NewApi("http://192.168.8.1/")
 	if err != nil {
 		panic(err)
 	}
 
-	err = API.SendSms(api.NewSmsSendOptions(os.Args[1], os.Args[2]))
+	err = api.SendSms(huaweie3372sms.NewSmsSendOptions(os.Args[1], os.Args[2]))
 	if err != nil {
 		panic(err)
 	}

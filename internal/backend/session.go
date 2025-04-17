@@ -1,4 +1,4 @@
-package api
+package backend
 
 import (
 	"bytes"
@@ -9,14 +9,14 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-type session struct {
+type Session struct {
 	client http.Client
 	baseUrl string
 	verificationTokens []string
 }
 
-func newSession(baseUrl string) (*session, error) {
-	session := new(session)
+func NewSession(baseUrl string) (*Session, error) {
+	session := new(Session)
 	jar, err := cookiejar.New(&cookiejar.Options{})
 
 	if err != nil {
@@ -50,19 +50,19 @@ func newSession(baseUrl string) (*session, error) {
 	return session, nil
 }
 
-type Token struct {
+type token struct {
 	XMLName xml.Name `xml:"request"`
 	Token string `xml:"token"`
 }
 
-func (session *session) requestToken() (string, error) {
+func (session *Session) RequestToken() (string, error) {
 	url := session.baseUrl + "webserver/token"
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
 	}
 
-	var token Token
+	var token token
 	err = xml.NewDecoder(resp.Body).Decode(&token)
 	if err != nil {
 		return "", err
@@ -72,16 +72,16 @@ func (session *session) requestToken() (string, error) {
 
 }
 
-func (session *session) getToken() (string, error) {
+func (session *Session) GetToken() (string, error) {
 	if len(session.verificationTokens) <= 0 {
-		return session.requestToken()
+		return session.RequestToken()
 	}
 	token := session.verificationTokens[0]
 	session.verificationTokens = session.verificationTokens[1:]
 	return token, nil
 }
 
-func (session *session) get(endpoint string) (*http.Response, error) {
+func (session *Session) Get(endpoint string) (*http.Response, error) {
 	url := session.baseUrl + endpoint
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -97,7 +97,7 @@ func (session *session) get(endpoint string) (*http.Response, error) {
 	return resp, nil
 }
 
-func (session *session) post(endpoint string, data any) (*http.Response, error) {
+func (session *Session) Post(endpoint string, data any) (*http.Response, error) {
 	data_encoded, err := xml.Marshal(data)
 	
 	if err != nil {
@@ -105,7 +105,7 @@ func (session *session) post(endpoint string, data any) (*http.Response, error) 
 	}
 
 	url := session.baseUrl + endpoint
-	verificationToken, err := session.getToken()
+	verificationToken, err := session.GetToken()
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,6 @@ func (session *session) post(endpoint string, data any) (*http.Response, error) 
 		return nil, err
 	}
 
-	//test if this is working
 	newToken := resp.Header.Get("__requestverificationtoken")
 	if newToken != "" {
 		session.verificationTokens = append(session.verificationTokens, newToken)

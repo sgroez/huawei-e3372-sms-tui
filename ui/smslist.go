@@ -3,22 +3,41 @@ package ui
 import (
 	"slices"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"github.com/sgroez/huawei-e3372-sms-tui/api"
+	huaweie3372sms "github.com/sgroez/huawei-e3372-sms-tui/pkg/huawei-e3372-sms"
 )
 
 type UISmsList struct {
-	*tview.List
+	*tview.Flex
+	width int
 }
 
-func NewUISmsList() *UISmsList {
-	list := tview.NewList()
-	return &UISmsList{List: list}
+func NewUISmsList(width int) *UISmsList {
+	flex := tview.NewFlex()
+	flex.SetDirection(tview.FlexRow)
+	return &UISmsList{Flex: flex, width: width}
 }
 
-func (list *UISmsList) AddSms(sms []api.Sms) {
+func (smsList *UISmsList) AddSms(sms []huaweie3372sms.Sms) {
 	slices.Reverse(sms)
 	for _, sms := range sms {
-		list.AddItem(sms.Content, sms.Phone + " " + sms.Date, rune(0), nil)
+		messageBox := tview.NewTextView().
+		SetText(sms.Content).
+		SetWrap(true).
+		SetTextColor(tcell.ColorWhite)
+
+		spacer := tview.NewBox()
+
+		row := tview.NewFlex().SetDirection(tview.FlexColumn)
+
+		if sms.Status < 3 {
+			row.AddItem(messageBox, smsList.width/2, 0, false)
+			row.AddItem(spacer, 0, 1, false)
+		} else {
+			row.AddItem(spacer, 0, 1, false)
+			row.AddItem(messageBox, smsList.width/2, 0, false)
+		}
+		smsList.AddItem(row, 0, 1, false)
 	}
 }

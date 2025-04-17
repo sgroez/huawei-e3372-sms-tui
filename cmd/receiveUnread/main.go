@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sgroez/huawei-e3372-sms-tui/api"
+	huaweie3372sms "github.com/sgroez/huawei-e3372-sms-tui/pkg/huawei-e3372-sms"
 )
 
 func main() {
-	API, err := api.NewApi("http://192.168.8.1/")
+	api, err := huaweie3372sms.NewApi("http://192.168.8.1/")
 	if err != nil {
 		panic(err)
 	}
@@ -18,7 +18,7 @@ func main() {
 		defer ticker.Stop()
 
 		for range ticker.C {
-			if smsList, err := API.ReceiveUnreadSms(); err == nil {
+			if smsList, err := api.SmsListUnread(); err == nil {
 				fmt.Println(smsList)
 			}
 		}
