@@ -2,16 +2,21 @@ package main
 
 import (
 	"log"
-	"time"
 
 	"github.com/rivo/tview"
-	"github.com/sgroez/huawei-e3372-sms-tui/internal/helper"
-	huaweie3372sms "github.com/sgroez/huawei-e3372-sms-tui/pkg/huawei-e3372-sms"
-	"github.com/sgroez/huawei-e3372-sms-tui/ui"
+	"github.com/sgroez/huawei-e3372-sms-tui/cmd/application/ui"
+	phonebook "github.com/sgroez/huawei-e3372-sms-tui/pkg/phone-book"
 )
 
 func main() {
+	/*
 	api, err := huaweie3372sms.NewApi("http://192.168.8.1/")
+	if err != nil {
+		panic(err)
+	}
+	*/
+
+	phonebook, err := phonebook.NewPhonebook()
 	if err != nil {
 		panic(err)
 	}
@@ -19,6 +24,7 @@ func main() {
 	title := "SMS CLIENT"
 
 	app := tview.NewApplication()
+	/*
 	uiSmsList := ui.NewUISmsList(80)
 
 	if smsList, err := api.SmsListInOut(); err == nil {
@@ -39,7 +45,7 @@ func main() {
 	}()
 
 	uiSmsInput := ui.NewUISmsInput(func(text string) {
-		phone := "+4915128841647"
+		phone := ""
 		date := helper.DateToString(time.Now())
 		err := api.SendSms(huaweie3372sms.NewSmsSendOptions(phone, text))
 		if err != nil {
@@ -51,8 +57,16 @@ func main() {
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 	AddItem(uiSmsList, 0, 1, false). 
 	AddItem(uiSmsInput, 3, 0, true)
+	*/
 
-	frame := ui.CreateFrame(title, layout)
+	uiConversationList := ui.NewUIConversationList()
+	if conversations, err := phonebook.FindConversation(); err == nil {
+		uiConversationList.AddConversations(conversations, func(phone string){
+			log.Println("open conversation", phone)
+		})
+	}
+
+	frame := ui.CreateFrame(title, uiConversationList)
 
 	if err := app.SetRoot(frame, true).EnableMouse(true).Run(); err != nil {
 		panic(err)
