@@ -9,7 +9,7 @@ type Phonebook struct {
 	db *gorm.DB
 }
 
-type Conversation struct {
+type Contact struct {
 	Phone string `gorm:"primaryKey"`
 	Name  string
 }
@@ -22,25 +22,31 @@ func NewPhonebook() (*Phonebook, error) {
 	}
 
 	phonebook.db = db
-	db.AutoMigrate(&Conversation{})
+	db.AutoMigrate(&Contact{})
 
 	return &phonebook, nil
 }
 
-func (phonebook *Phonebook) FirstOrCreateConversation(phone string) (*Conversation, error) {
-	var conversation Conversation
-	err := phonebook.db.FirstOrCreate(&conversation, Conversation{Name: phone, Phone: phone}).Error
+func (phonebook *Phonebook) FirstOrCreateContact(phone string) (*Contact, error) {
+	var contact Contact
+	err := phonebook.db.FirstOrCreate(&contact, Contact{Name: phone, Phone: phone}).Error
 	if err != nil {
 		return nil, err
 	}
-	return &conversation, nil
+	return &contact, nil
 }
 
-func (phonebook *Phonebook) FindConversation() ([]Conversation, error) {
-	var conversations []Conversation
-	err := phonebook.db.Find(&conversations).Error
+func (phonebook *Phonebook) UpdateContactName(phone string, name string) {
+	phonebook.db.Model(&Contact{}).
+    Where("phone = ?", phone).
+    Update("name", name)
+}
+
+func (phonebook *Phonebook) FindWithPhone(phone string) (*Contact, error) {
+	var contact Contact
+	err := phonebook.db.First(&contact, phone).Error
 	if err != nil {
 		return nil, err
 	}
-	return conversations, nil
+	return &contact, nil
 }

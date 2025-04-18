@@ -1,20 +1,19 @@
 package main
 
 import (
-	"log"
+	"time"
 
 	"github.com/rivo/tview"
 	"github.com/sgroez/huawei-e3372-sms-tui/cmd/application/ui"
+	huaweie3372sms "github.com/sgroez/huawei-e3372-sms-tui/pkg/huawei-e3372-sms"
 	phonebook "github.com/sgroez/huawei-e3372-sms-tui/pkg/phone-book"
 )
 
 func main() {
-	/*
 	api, err := huaweie3372sms.NewApi("http://192.168.8.1/")
 	if err != nil {
 		panic(err)
 	}
-	*/
 
 	phonebook, err := phonebook.NewPhonebook()
 	if err != nil {
@@ -22,13 +21,43 @@ func main() {
 	}
 
 	title := "SMS CLIENT"
-
 	app := tview.NewApplication()
-	/*
-	uiSmsList := ui.NewUISmsList(80)
+	pages := tview.NewPages()
+	conversationMap := map[string]*ui.UIConversation{}
 
-	if smsList, err := api.SmsListInOut(); err == nil {
-		uiSmsList.AddSms(smsList.Sms)
+	smsListGrouped, err := api.SmsListGroupedByPhone(false)
+	if err != nil {
+		panic(err)
+	}
+
+	uiConversationList := ui.NewUIConversationList(func(primitive tview.Primitive) {
+		app.SetFocus(primitive)
+	})
+	for _, group := range smsListGrouped {
+		phone := group[0].Phone
+		name := phone
+		if contact, err := phonebook.FindWithPhone(phone); err == nil {
+			name = contact.Name
+		}
+		uiConversationList.AddConversation(phone, name, func(phone string) {
+			pages.SwitchToPage(phone)
+		})
+	}
+	
+	pages.AddPage("conversations", uiConversationList, true, true)
+
+	//add function to add contact
+
+	for _, group := range smsListGrouped {
+		phone := group[0].Phone
+		uiConversation := ui.NewUIConversation(phone, 80, func(phone string, content string) error {
+			return api.SendSms(huaweie3372sms.NewSmsSendOptions(phone, content))
+		},func() {
+			pages.SwitchToPage("conversations")
+		})
+		uiConversation.AddSms(group)
+		pages.AddPage(phone, uiConversation, true, false)
+		conversationMap[phone] = uiConversation
 	}
 
 	go func() {
@@ -36,37 +65,40 @@ func main() {
 		defer ticker.Stop()
 
 		for range ticker.C {
-			if smsList, err := api.SmsListUnread(); err == nil {
-				app.QueueUpdateDraw(func() {
-					uiSmsList.AddSms(smsList.Sms)
-				})
+			smsListGrouped, err := api.SmsListGroupedByPhone(true) 
+			if err != nil {
+				panic(err)
 			}
+			app.QueueUpdateDraw(func() {
+				for _, group := range smsListGrouped {
+					phone := group[0].Phone
+					name := phone
+					if contact, err := phonebook.FindWithPhone(phone); err == nil {
+						name = contact.Name
+					}
+					if pages.HasPage(phone) {
+						uiConversation := conversationMap[phone]
+						uiConversation.AddSms(group)
+					}else {
+						uiConversationList.AddConversation(phone, name, func(phone string) {
+							pages.SwitchToPage(phone)
+						})
+						uiConversation := ui.NewUIConversation(phone, 80, func(phone string, content string) error {
+							return api.SendSms(huaweie3372sms.NewSmsSendOptions(phone, content))
+						},func() {
+							pages.SwitchToPage("conversations")
+						})
+						uiConversation.AddSms(group)
+						pages.AddPage(phone, uiConversation, true, false)
+						conversationMap[phone] = uiConversation
+					}
+
+				}
+			})
 		}
 	}()
 
-	uiSmsInput := ui.NewUISmsInput(func(text string) {
-		phone := ""
-		date := helper.DateToString(time.Now())
-		err := api.SendSms(huaweie3372sms.NewSmsSendOptions(phone, text))
-		if err != nil {
-			log.Println(err)
-		}
-		uiSmsList.AddSms([]huaweie3372sms.Sms{{Phone: phone, Content: text, Date: date, Status: 3}})
-	})
-
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-	AddItem(uiSmsList, 0, 1, false). 
-	AddItem(uiSmsInput, 3, 0, true)
-	*/
-
-	uiConversationList := ui.NewUIConversationList()
-	if conversations, err := phonebook.FindConversation(); err == nil {
-		uiConversationList.AddConversations(conversations, func(phone string){
-			log.Println("open conversation", phone)
-		})
-	}
-
-	frame := ui.CreateFrame(title, uiConversationList)
+	frame := ui.CreateFrame(title, pages)
 
 	if err := app.SetRoot(frame, true).EnableMouse(true).Run(); err != nil {
 		panic(err)
